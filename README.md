@@ -12,7 +12,20 @@ A prompt recovers a model's **working style**, not its **capability tier**. Styl
 
 A persona's `system.md` becomes the agent's *entire* system prompt — arbitrary, fully-privileged instructions, and run as root under `--root`. **Only install personas you trust.** See [SECURITY.md](SECURITY.md).
 
-## Install (Bun)
+## Install
+
+### From a release (no Bun required)
+
+Download the binary for your platform from [Releases](https://github.com/Trosfy/aip/releases/latest):
+
+```sh
+curl -fsSL -o aip https://github.com/Trosfy/aip/releases/latest/download/aip-linux-arm64
+chmod +x aip && ./aip --list
+```
+
+Targets: `aip-linux-x64`, `aip-linux-arm64`, `aip-darwin-x64`, `aip-darwin-arm64`.
+
+### From source (Bun)
 
 ```sh
 bun install
@@ -40,27 +53,30 @@ A persona is a directory with a required `system.md` and an optional `meta.json`
   meta.json     # optional:  { "description": "..." }
 ```
 
-Drop it in and `aip <name>` finds it — no code changes. User personas in `~/.config/aip/personas` take precedence over the bundled defaults.
+Drop it in `~/.config/aip/personas/` and `aip <name>` finds it — no code, no rebuild. User personas take precedence over bundled ones.
+
+Bundled personas (shipped inside the binary, like `fable-5`) live in `src/personas/<name>/` and are registered with a one-line `import` in `src/bundled.ts`, so `bun build --compile` embeds them.
 
 ## Layout
 
 ```
 src/
   cli.ts        composition root — parse args, wire the pieces, run
-  persona.ts    PersonaRepository + Persona — discovery across roots
+  persona.ts    PersonaRepository + PersonaSource (FilesystemSource / BundledSource)
+  bundled.ts    personas embedded into the compiled binary
   composer.ts   PromptComposer — base prompt + context sections
   context.ts    ContextProvider + WorkingDirectory / System / Clock / Git
   runner.ts     Runner + PlainRunner / RootSudoRunner
-  personas/     bundled personas (data)
+  personas/     bundled persona data
 test/
 ```
 
-The extension points are the interfaces: add a `ContextProvider` for new environment data, a `Runner` for a new launch strategy, or a persona directory for new behavior — each without touching the others.
+The extension points are the interfaces: add a `PersonaSource`, a `ContextProvider`, a `Runner`, or a persona directory — each without touching the others.
 
 ## CI/CD
 
-- **`ci`** runs on every push and pull request to `main`: `bun install`, typecheck, and `bun test`.
-- **`release`** runs [release-please](https://github.com/googleapis/release-please-action) on push to `main`. It maintains a release PR from your [Conventional Commits](https://www.conventionalcommits.org/); merging that PR tags the version and creates the GitHub Release.
+- **`ci`** — push and pull request to `main`: `bun install`, typecheck, and `bun test`.
+- **`release`** — [release-please](https://github.com/googleapis/release-please-action) on `main` maintains a release PR from [Conventional Commits](https://www.conventionalcommits.org/); merging it tags the version and creates the GitHub Release, then a `binaries` job compiles standalone executables (linux/macOS × x64/arm64) and uploads them to that release.
 
 ## Test
 
