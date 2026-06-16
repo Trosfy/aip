@@ -8,18 +8,58 @@ export class PersonaNotFound extends Error {}
 
 export interface Persona {
   name: string;
-  systemPath: string;
   description: string;
   systemPrompt(): string;
 }
 
-export class PersonaRepository {
+export interface PersonaSource {
+  get(name: string): Persona | null;
+  all(): Persona[];
+}
+
+export class FilesystemSource implements PersonaSource {
   constructor(private readonly roots: string[]) {}
+
+  get(name: string): Persona | null {
+    for (const root of this.roots) {
+      const persona = load(join(root, name));
+      if (persona) return persona;
+    }
+    return null;
+  }
+
+  all(): Persona[] {
+    const out: Persona[] = [];
+    for (const root of this.roots) {
+      if (!existsSync(root) || !statSync(root).isDirectory()) continue;
+      for (const entry of readdirSync(root).sort()) {
+        const persona = load(join(root, entry));
+        if (persona) out.push(persona);
+      }
+    }
+    return out;
+  }
+}
+
+export class BundledSource implements PersonaSource {
+  constructor(private readonly personas: Persona[]) {}
+
+  get(name: string): Persona | null {
+    return this.personas.find((persona) => persona.name === name) ?? null;
+  }
+
+  all(): Persona[] {
+    return [...this.personas];
+  }
+}
+
+export class PersonaRepository {
+  constructor(private readonly sources: PersonaSource[]) {}
 
   get(name: string): Persona {
     if (!VALID_NAME.test(name)) throw new PersonaNotFound(name);
-    for (const root of this.roots) {
-      const persona = this.load(join(root, name));
+    for (const source of this.sources) {
+      const persona = source.get(name);
       if (persona) return persona;
     }
     throw new PersonaNotFound(name);
@@ -27,26 +67,23 @@ export class PersonaRepository {
 
   all(): Persona[] {
     const found = new Map<string, Persona>();
-    for (const root of this.roots) {
-      if (!existsSync(root) || !statSync(root).isDirectory()) continue;
-      for (const entry of readdirSync(root).sort()) {
-        const persona = this.load(join(root, entry));
-        if (persona && !found.has(persona.name)) found.set(persona.name, persona);
+    for (const source of this.sources) {
+      for (const persona of source.all()) {
+        if (!found.has(persona.name)) found.set(persona.name, persona);
       }
     }
     return [...found.values()];
   }
+}
 
-  private load(dir: string): Persona | null {
-    const systemPath = join(dir, "system.md");
-    if (!existsSync(systemPath) || !statSync(systemPath).isFile()) return null;
-    return {
-      name: basename(dir),
-      systemPath,
-      description: readDescription(join(dir, "meta.json")),
-      systemPrompt: () => readFileSync(systemPath, "utf8"),
-    };
-  }
+function load(dir: string): Persona | null {
+  const systemPath = join(dir, "system.md");
+  if (!existsSync(systemPath) || !statSync(systemPath).isFile()) return null;
+  return {
+    name: basename(dir),
+    description: readDescription(join(dir, "meta.json")),
+    systemPrompt: () => readFileSync(systemPath, "utf8"),
+  };
 }
 
 function readDescription(metaPath: string): string {
@@ -59,8 +96,6 @@ function readDescription(metaPath: string): string {
   }
 }
 
-export function defaultRoots(): string[] {
-  const userDir = join(homedir(), ".config", "aip", "personas");
-  const bundled = join(import.meta.dir, "personas");
-  return [userDir, bundled];
+export function defaultUserRoot(): string {
+  return join(homedir(), ".config", "aip", "personas");
 }

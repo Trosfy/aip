@@ -3,9 +3,16 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { homedir, userInfo } from "node:os";
 import { join } from "node:path";
 
+import { BUNDLED } from "./bundled.ts";
 import { PromptComposer } from "./composer.ts";
 import { defaultProviders } from "./context.ts";
-import { PersonaNotFound, PersonaRepository, defaultRoots } from "./persona.ts";
+import {
+  BundledSource,
+  FilesystemSource,
+  PersonaNotFound,
+  PersonaRepository,
+  defaultUserRoot,
+} from "./persona.ts";
 import { PlainRunner, RootSudoRunner, type Runner } from "./runner.ts";
 
 interface Args {
@@ -24,6 +31,13 @@ function parse(argv: string[]): Args {
     else args.passthrough.push(arg);
   }
   return args;
+}
+
+function repository(): PersonaRepository {
+  return new PersonaRepository([
+    new FilesystemSource([defaultUserRoot()]),
+    new BundledSource(BUNDLED),
+  ]);
 }
 
 function claudeBinary(): string {
@@ -60,7 +74,7 @@ function printPersonas(repo: PersonaRepository, toErr = false): void {
 
 function main(): number {
   const args = parse(Bun.argv.slice(2));
-  const repo = new PersonaRepository(defaultRoots());
+  const repo = repository();
 
   if (args.list) {
     printPersonas(repo);

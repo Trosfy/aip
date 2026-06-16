@@ -3,7 +3,13 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { PersonaNotFound, PersonaRepository } from "../src/persona.ts";
+import {
+  BundledSource,
+  FilesystemSource,
+  type Persona,
+  PersonaNotFound,
+  PersonaRepository,
+} from "../src/persona.ts";
 
 function makeRoot(): string {
   const root = join(tmpdir(), `aip-test-${crypto.randomUUID()}`);
@@ -20,40 +26,55 @@ function writePersona(root: string, name: string, system = "PROMPT", description
   }
 }
 
-test("get returns persona with prompt and description", () => {
+function bundled(name: string, prompt: string, description = ""): Persona {
+  return { name, description, systemPrompt: () => prompt };
+}
+
+function fsRepo(...roots: string[]): PersonaRepository {
+  return new PersonaRepository([new FilesystemSource(roots)]);
+}
+
+test("filesystem source resolves prompt and description", () => {
   const root = makeRoot();
   writePersona(root, "demo", "HELLO", "a demo");
-  const persona = new PersonaRepository([root]).get("demo");
+  const persona = fsRepo(root).get("demo");
   expect(persona.name).toBe("demo");
   expect(persona.systemPrompt()).toBe("HELLO");
   expect(persona.description).toBe("a demo");
 });
 
+test("bundled source resolves", () => {
+  const repo = new PersonaRepository([new BundledSource([bundled("fable-5", "S", "d")])]);
+  expect(repo.get("fable-5").systemPrompt()).toBe("S");
+});
+
 test("unknown persona throws", () => {
-  const root = makeRoot();
-  expect(() => new PersonaRepository([root]).get("nope")).toThrow(PersonaNotFound);
+  expect(() => fsRepo(makeRoot()).get("nope")).toThrow(PersonaNotFound);
 });
 
 test("rejects names with path separators or traversal", () => {
-  const repo = new PersonaRepository([makeRoot()]);
+  const repo = fsRepo(makeRoot());
   expect(() => repo.get("../escape")).toThrow(PersonaNotFound);
   expect(() => repo.get("a/b")).toThrow(PersonaNotFound);
   expect(() => repo.get("..")).toThrow(PersonaNotFound);
 });
 
-test("first root wins", () => {
-  const a = makeRoot();
-  const b = makeRoot();
-  writePersona(a, "demo", "A");
-  writePersona(b, "demo", "B");
-  expect(new PersonaRepository([a, b]).get("demo").systemPrompt()).toBe("A");
+test("earlier source wins (user overrides bundled)", () => {
+  const root = makeRoot();
+  writePersona(root, "fable-5", "USER OVERRIDE");
+  const repo = new PersonaRepository([
+    new FilesystemSource([root]),
+    new BundledSource([bundled("fable-5", "BUNDLED")]),
+  ]);
+  expect(repo.get("fable-5").systemPrompt()).toBe("USER OVERRIDE");
 });
 
-test("all lists personas across roots", () => {
-  const a = makeRoot();
-  const b = makeRoot();
-  writePersona(a, "one");
-  writePersona(b, "two");
-  const names = new PersonaRepository([a, b]).all().map((p) => p.name).sort();
-  expect(names).toEqual(["one", "two"]);
+test("all merges and de-duplicates across sources", () => {
+  const root = makeRoot();
+  writePersona(root, "one");
+  const repo = new PersonaRepository([
+    new FilesystemSource([root]),
+    new BundledSource([bundled("one", "x"), bundled("two", "y")]),
+  ]);
+  expect(repo.all().map((p) => p.name).sort()).toEqual(["one", "two"]);
 });
