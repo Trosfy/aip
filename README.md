@@ -1,5 +1,7 @@
 # aip — Add-In Prompt
 
+![aip — Add-In Prompt](assets/banner.png)
+
 Aftermarket system prompts for AI coding agents. Like an NVIDIA **AIB** (Add-In Board) partner building a card on a reference GPU, an **AIP** is an *Add-In Prompt*: a third-party persona bolted onto a base model.
 
 The first persona, `fable-5`, recovers the working style of the (suspended) Fable 5 — result-first, low-narration — on top of Opus 4.8 in Claude Code.
