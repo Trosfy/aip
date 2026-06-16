@@ -1,0 +1,19 @@
+{
+  "name": "aip",
+  "version": "0.1.0",
+  "description": "Add-In Prompt: aftermarket system prompts for AI coding agents.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "aip": "src/cli.ts"
+  },
+  "scripts": {
+    "aip": "bun run src/cli.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5"
+  }
+}
