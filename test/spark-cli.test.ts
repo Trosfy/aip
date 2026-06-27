@@ -43,7 +43,6 @@ test("install writes a 600 config + 700 home with sane defaults", async () => {
   expect(rec.SPARK_BASE_URL).toBe("http://fleet.test:9000"); // root-normalized
   expect(rec.SPARK_TOKEN).toBe("virtual-key-A");
   expect(rec.SPARK_HARNESS).toBe("claude");
-  expect(rec.SPARK_ESCALATION).toBe("off");
   expect(rec.SPARK_MODEL).toBeDefined();
   expect(rec.SPARK_OPUS_MODEL).toBeDefined();
 });

@@ -204,7 +204,6 @@ export async function runInstall(argv: string[]): Promise<number> {
   for (const [key, value] of Object.entries(DEFAULT_MODELS)) {
     if (!existing[key] && !updates[key]) updates[key] = value;
   }
-  if (!existing.SPARK_ESCALATION) updates.SPARK_ESCALATION = "off";
 
   const { warnedPerms, merged } = writeSparkEnv(updates, existing);
   if (warnedPerms) {

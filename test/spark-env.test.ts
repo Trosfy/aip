@@ -16,7 +16,6 @@ function sampleConfig(over: Partial<SparkConfig> = {}): SparkConfig {
     haikuModel: "haiku-seat",
     harness: "claude",
     configDir: "/home/u/.config/aip/spark-home",
-    escalation: "off",
     shimPath: "",
     ...over,
   };

@@ -26,7 +26,6 @@ export interface SparkConfig {
   haikuModel: string;
   harness: string;
   configDir: string;
-  escalation: string;
   shimPath: string;
 }
 
@@ -195,7 +194,6 @@ export function resolveConfig(rec: Record<string, string>): SparkConfig {
     haikuModel: seat("SPARK_HAIKU_MODEL"),
     harness: rec.SPARK_HARNESS || "claude",
     configDir: sparkHomeDir(),
-    escalation: rec.SPARK_ESCALATION || "off",
     shimPath: rec.SPARK_SHIM_PATH ?? "",
   };
 }
