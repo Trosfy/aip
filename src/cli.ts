@@ -14,6 +14,12 @@ import {
   defaultUserRoot,
 } from "./persona.ts";
 import { PlainRunner, RootSudoRunner, type Runner } from "./runner.ts";
+import { reservedVerb, runInstall, runUninstall } from "./spark/install.ts";
+import { runSparkBackend } from "./spark/launch.ts";
+
+// `spark` is a reserved backend name bound to the bundled persona at the launcher,
+// not resolved through the (shadowable) persona repository.
+const SPARK_PERSONA = "spark";
 
 interface Args {
   persona?: string;
@@ -72,8 +78,16 @@ function printPersonas(repo: PersonaRepository, toErr = false): void {
   }
 }
 
-function main(): number {
-  const args = parse(Bun.argv.slice(2));
+async function main(): Promise<number> {
+  const argv = Bun.argv.slice(2);
+
+  // Reserved verbs checked on the FIRST non-flag token, before persona dispatch, each
+  // with its own subparser so their flags never leak to claude.
+  const verb = reservedVerb(argv);
+  if (verb === "install") return runInstall(argv);
+  if (verb === "uninstall") return runUninstall(argv);
+
+  const args = parse(argv);
   const repo = repository();
 
   if (args.list) {
@@ -84,6 +98,10 @@ function main(): number {
     console.error("usage: aip <persona> [--root] [agent args...]");
     printPersonas(repo, true);
     return 2;
+  }
+
+  if (args.persona === SPARK_PERSONA) {
+    return runSparkBackend(args.passthrough, { root: args.root, claudeBin: claudeBinary() });
   }
 
   let persona;
@@ -103,4 +121,4 @@ function main(): number {
   return buildRunner(args.root, claudeBinary()).run(rendered, args.passthrough);
 }
 
-process.exit(main());
+process.exit(await main());

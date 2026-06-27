@@ -3,17 +3,17 @@ import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 
 export interface Runner {
-  run(promptPath: string, extraArgs: string[]): number;
+  run(promptPath: string, extraArgs: string[], env?: Record<string, string>): number;
 }
 
 export class PlainRunner implements Runner {
   constructor(private readonly claudeBin: string) {}
 
-  run(promptPath: string, extraArgs: string[]): number {
+  run(promptPath: string, extraArgs: string[], env?: Record<string, string>): number {
     const result = spawnSync(
       this.claudeBin,
       ["--system-prompt-file", promptPath, ...extraArgs],
-      { stdio: "inherit" },
+      { stdio: "inherit", env },
     );
     return result.status ?? 1;
   }
@@ -26,11 +26,11 @@ export class RootSudoRunner implements Runner {
     private readonly restore: string[],
   ) {}
 
-  run(promptPath: string, extraArgs: string[]): number {
+  run(promptPath: string, extraArgs: string[], env?: Record<string, string>): number {
     const result = spawnSync(
       "sudo",
       ["-E", `HOME=${homedir()}`, this.claudeBin, "--system-prompt-file", promptPath, ...extraArgs],
-      { stdio: "inherit" },
+      { stdio: "inherit", env },
     );
     this.restoreOwnership();
     return result.status ?? 1;
