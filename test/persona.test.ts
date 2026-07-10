@@ -43,9 +43,24 @@ test("filesystem source resolves prompt and description", () => {
   expect(persona.description).toBe("a demo");
 });
 
+test("filesystem source reads harness from meta.json", () => {
+  const root = makeRoot();
+  const dir = join(root, "dense");
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, "system.md"), "P", "utf8");
+  writeFileSync(join(dir, "meta.json"), JSON.stringify({ description: "d", harness: "claude" }), "utf8");
+  expect(fsRepo(root).get("dense").harness).toBe("claude");
+});
+
+test("harness is undefined when meta.json omits it", () => {
+  const root = makeRoot();
+  writePersona(root, "plain", "P", "d");
+  expect(fsRepo(root).get("plain").harness).toBeUndefined();
+});
+
 test("bundled source resolves", () => {
-  const repo = new PersonaRepository([new BundledSource([bundled("fable-5", "S", "d")])]);
-  expect(repo.get("fable-5").systemPrompt()).toBe("S");
+  const repo = new PersonaRepository([new BundledSource([bundled("notus", "S", "d")])]);
+  expect(repo.get("notus").systemPrompt()).toBe("S");
 });
 
 test("unknown persona throws", () => {
@@ -61,12 +76,12 @@ test("rejects names with path separators or traversal", () => {
 
 test("earlier source wins (user overrides bundled)", () => {
   const root = makeRoot();
-  writePersona(root, "fable-5", "USER OVERRIDE");
+  writePersona(root, "notus", "USER OVERRIDE");
   const repo = new PersonaRepository([
     new FilesystemSource([root]),
-    new BundledSource([bundled("fable-5", "BUNDLED")]),
+    new BundledSource([bundled("notus", "BUNDLED")]),
   ]);
-  expect(repo.get("fable-5").systemPrompt()).toBe("USER OVERRIDE");
+  expect(repo.get("notus").systemPrompt()).toBe("USER OVERRIDE");
 });
 
 test("all merges and de-duplicates across sources", () => {

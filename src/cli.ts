@@ -3,9 +3,16 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { homedir, userInfo } from "node:os";
 import { join } from "node:path";
 
-import { BUNDLED } from "./bundled.ts";
+import { BUNDLED, BUNDLED_HARNESSES } from "./bundled.ts";
 import { PromptComposer } from "./composer.ts";
 import { defaultProviders } from "./context.ts";
+import {
+  BundledHarnessSource,
+  FilesystemHarnessSource,
+  HarnessNotFound,
+  HarnessRepository,
+  defaultHarnessRoot,
+} from "./harness.ts";
 import {
   BundledSource,
   FilesystemSource,
@@ -25,14 +32,19 @@ interface Args {
   persona?: string;
   list: boolean;
   root: boolean;
+  harness?: string;
+  noHarness: boolean;
   passthrough: string[];
 }
 
 function parse(argv: string[]): Args {
-  const args: Args = { list: false, root: false, passthrough: [] };
-  for (const arg of argv) {
+  const args: Args = { list: false, root: false, noHarness: false, passthrough: [] };
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i]!;
     if (arg === "--list") args.list = true;
     else if (arg === "--root") args.root = true;
+    else if (arg === "--no-harness") args.noHarness = true;
+    else if (arg === "--harness") args.harness = argv[++i] ?? "";
     else if (args.persona === undefined && !arg.startsWith("-")) args.persona = arg;
     else args.passthrough.push(arg);
   }
@@ -43,6 +55,13 @@ function repository(): PersonaRepository {
   return new PersonaRepository([
     new FilesystemSource([defaultUserRoot()]),
     new BundledSource(BUNDLED),
+  ]);
+}
+
+function harnesses(): HarnessRepository {
+  return new HarnessRepository([
+    new FilesystemHarnessSource([defaultHarnessRoot()]),
+    new BundledHarnessSource(BUNDLED_HARNESSES),
   ]);
 }
 
@@ -88,6 +107,10 @@ async function main(): Promise<number> {
   if (verb === "uninstall") return runUninstall(argv);
 
   const args = parse(argv);
+  if (args.harness === "") {
+    console.error("aip: --harness requires a name");
+    return 2;
+  }
   const repo = repository();
 
   if (args.list) {
@@ -95,12 +118,15 @@ async function main(): Promise<number> {
     return 0;
   }
   if (!args.persona) {
-    console.error("usage: aip <persona> [--root] [agent args...]");
+    console.error("usage: aip <persona> [--root] [--harness <name> | --no-harness] [agent args...]");
     printPersonas(repo, true);
     return 2;
   }
 
   if (args.persona === SPARK_PERSONA) {
+    if (args.harness !== undefined || args.noHarness) {
+      console.error("aip: --harness/--no-harness are ignored for spark (set via `aip install spark --harness`)");
+    }
     return runSparkBackend(args.passthrough, { root: args.root, claudeBin: claudeBinary() });
   }
 
@@ -116,7 +142,24 @@ async function main(): Promise<number> {
     throw error;
   }
 
-  const prompt = new PromptComposer(defaultProviders()).compose(persona.systemPrompt());
+  // Harness module resolution: explicit flag > persona default > none (self-contained persona).
+  const harnessName = args.noHarness ? undefined : (args.harness ?? persona.harness);
+  const modules: string[] = [];
+  if (harnessName) {
+    try {
+      modules.push(harnesses().get(harnessName).prompt());
+    } catch (error) {
+      if (error instanceof HarnessNotFound) {
+        console.error(`aip: unknown harness '${harnessName}'`);
+        const known = harnesses().all();
+        if (known.length > 0) console.error(`known harnesses: ${known.map((h) => h.name).join(", ")}`);
+        return 1;
+      }
+      throw error;
+    }
+  }
+
+  const prompt = new PromptComposer(defaultProviders()).compose(persona.systemPrompt(), modules);
   const rendered = render(persona.name, prompt);
   return buildRunner(args.root, claudeBinary()).run(rendered, args.passthrough);
 }

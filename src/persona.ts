@@ -9,6 +9,8 @@ export class PersonaNotFound extends Error {}
 export interface Persona {
   name: string;
   description: string;
+  /** Default harness module to append (overridable with --harness / --no-harness). */
+  harness?: string;
   systemPrompt(): string;
 }
 
@@ -79,20 +81,28 @@ export class PersonaRepository {
 function load(dir: string): Persona | null {
   const systemPath = join(dir, "system.md");
   if (!existsSync(systemPath) || !statSync(systemPath).isFile()) return null;
+  const meta = readMeta(join(dir, "meta.json"));
   return {
     name: basename(dir),
-    description: readDescription(join(dir, "meta.json")),
+    description: meta.description,
+    harness: meta.harness,
     systemPrompt: () => readFileSync(systemPath, "utf8"),
   };
 }
 
-function readDescription(metaPath: string): string {
-  if (!existsSync(metaPath)) return "";
+function readMeta(metaPath: string): { description: string; harness?: string } {
+  if (!existsSync(metaPath)) return { description: "" };
   try {
-    const meta = JSON.parse(readFileSync(metaPath, "utf8")) as { description?: unknown };
-    return typeof meta.description === "string" ? meta.description : "";
+    const meta = JSON.parse(readFileSync(metaPath, "utf8")) as {
+      description?: unknown;
+      harness?: unknown;
+    };
+    return {
+      description: typeof meta.description === "string" ? meta.description : "",
+      harness: typeof meta.harness === "string" ? meta.harness : undefined,
+    };
   } catch {
-    return "";
+    return { description: "" };
   }
 }
 
