@@ -1,5 +1,6 @@
 import type { Harness } from "./harness.ts";
 import claudeHarness from "./harnesses/claude.md" with { type: "text" };
+import codexHarness from "./harnesses/codex.md" with { type: "text" };
 import type { Persona } from "./persona.ts";
 import notusSystem from "./personas/notus/system.md" with { type: "text" };
 
@@ -16,5 +17,9 @@ export const BUNDLED_HARNESSES: Harness[] = [
   {
     name: "claude",
     prompt: () => claudeHarness,
+  },
+  {
+    name: "codex",
+    prompt: () => codexHarness,
   },
 ];
