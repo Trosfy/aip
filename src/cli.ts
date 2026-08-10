@@ -20,7 +20,7 @@ import {
   PersonaRepository,
   defaultUserRoot,
 } from "./persona.ts";
-import { PlainRunner, RootSudoRunner, type Runner } from "./runner.ts";
+import { CodexRunner, PlainRunner, RootSudoRunner, type Runner } from "./runner.ts";
 import { reservedVerb, runInstall, runUninstall } from "./spark/install.ts";
 import { runSparkBackend } from "./spark/launch.ts";
 
@@ -34,21 +34,33 @@ interface Args {
   root: boolean;
   harness?: string;
   noHarness: boolean;
+  client?: string;
   passthrough: string[];
 }
 
-function parse(argv: string[]): Args {
+export function parse(argv: string[]): Args {
   const args: Args = { list: false, root: false, noHarness: false, passthrough: [] };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]!;
-    if (arg === "--list") args.list = true;
+    if (arg === "--") {
+      args.passthrough.push(...argv.slice(i + 1));
+      break;
+    } else if (arg === "--list") args.list = true;
     else if (arg === "--root") args.root = true;
     else if (arg === "--no-harness") args.noHarness = true;
     else if (arg === "--harness") args.harness = argv[++i] ?? "";
+    else if (arg === "--client") args.client = argv[++i] ?? "";
     else if (args.persona === undefined && !arg.startsWith("-")) args.persona = arg;
     else args.passthrough.push(arg);
   }
   return args;
+}
+
+export function resolveHarnessName(args: Args, personaHarness?: string): string | undefined {
+  if (args.noHarness) return undefined;
+  if (args.harness !== undefined) return args.harness;
+  if (args.client !== undefined) return args.client;
+  return personaHarness;
 }
 
 function repository(): PersonaRepository {
@@ -69,6 +81,12 @@ function claudeBinary(): string {
   return Bun.which("claude") ?? join(homedir(), ".local", "bin", "claude");
 }
 
+function codexBinary(): string {
+  const configured = process.env.AIP_CODEX_BIN;
+  if (configured) return Bun.which(configured) ?? configured;
+  return Bun.which("codex") ?? join(homedir(), ".local", "bin", "codex");
+}
+
 function render(personaName: string, prompt: string): string {
   const cache = join(homedir(), ".cache", "aip");
   mkdirSync(cache, { recursive: true });
@@ -77,7 +95,7 @@ function render(personaName: string, prompt: string): string {
   return path;
 }
 
-function buildRunner(useRoot: boolean, claudeBin: string): Runner {
+function buildClaudeRunner(useRoot: boolean, claudeBin: string): Runner {
   if (!useRoot) return new PlainRunner(claudeBin);
   const home = homedir();
   const restore = [join(home, ".claude"), join(home, ".claude.json"), join(home, ".npm")];
@@ -97,9 +115,7 @@ function printPersonas(repo: PersonaRepository, toErr = false): void {
   }
 }
 
-async function main(): Promise<number> {
-  const argv = Bun.argv.slice(2);
-
+export async function main(argv: string[] = Bun.argv.slice(2)): Promise<number> {
   // Reserved verbs checked on the FIRST non-flag token, before persona dispatch, each
   // with its own subparser so their flags never leak to claude.
   const verb = reservedVerb(argv);
@@ -111,6 +127,21 @@ async function main(): Promise<number> {
     console.error("aip: --harness requires a name");
     return 2;
   }
+  if (args.client === "") {
+    console.error("aip: --client requires a name");
+    return 2;
+  }
+  const client = args.client ?? "claude";
+  if (client !== "claude" && client !== "codex") {
+    console.error(`aip: unknown client '${client}' (known: claude, codex)`);
+    return 2;
+  }
+  if (client === "codex" && args.root) {
+    console.error(
+      "aip: --root is not supported for the Codex client; use Codex sandbox/approval flags explicitly",
+    );
+    return 2;
+  }
   const repo = repository();
 
   if (args.list) {
@@ -118,12 +149,18 @@ async function main(): Promise<number> {
     return 0;
   }
   if (!args.persona) {
-    console.error("usage: aip <persona> [--root] [--harness <name> | --no-harness] [agent args...]");
+    console.error(
+      "usage: aip <persona> [--client <claude|codex>] [--root] [--harness <name> | --no-harness] [-- agent args...]",
+    );
     printPersonas(repo, true);
     return 2;
   }
 
   if (args.persona === SPARK_PERSONA) {
+    if (args.client !== undefined) {
+      console.error("aip: --client is not supported for spark yet");
+      return 2;
+    }
     if (args.harness !== undefined || args.noHarness) {
       console.error("aip: --harness/--no-harness are ignored for spark (set via `aip install spark --harness`)");
     }
@@ -142,8 +179,8 @@ async function main(): Promise<number> {
     throw error;
   }
 
-  // Harness module resolution: explicit flag > persona default > none (self-contained persona).
-  const harnessName = args.noHarness ? undefined : (args.harness ?? persona.harness);
+  // Harness module resolution: explicit harness > explicit client > persona default > none.
+  const harnessName = resolveHarnessName(args, persona.harness);
   const modules: string[] = [];
   if (harnessName) {
     try {
@@ -161,7 +198,11 @@ async function main(): Promise<number> {
 
   const prompt = new PromptComposer(defaultProviders()).compose(persona.systemPrompt(), modules);
   const rendered = render(persona.name, prompt);
-  return buildRunner(args.root, claudeBinary()).run(rendered, args.passthrough);
+  const runner =
+    client === "codex"
+      ? new CodexRunner(codexBinary())
+      : buildClaudeRunner(args.root, claudeBinary());
+  return runner.run(rendered, args.passthrough);
 }
 
-process.exit(await main());
+if (import.meta.main) process.exit(await main());

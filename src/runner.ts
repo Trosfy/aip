@@ -19,6 +19,24 @@ export class PlainRunner implements Runner {
   }
 }
 
+export class CodexRunner implements Runner {
+  constructor(private readonly codexBin: string) {}
+
+  run(promptPath: string, extraArgs: string[], env?: Record<string, string>): number {
+    // JSON string syntax is valid TOML string syntax and safely preserves spaces,
+    // quotes, and backslashes in the rendered prompt path.
+    const instructionConfig = `model_instructions_file=${JSON.stringify(promptPath)}`;
+    const result = spawnSync(this.codexBin, ["-c", instructionConfig, ...extraArgs], {
+      stdio: "inherit",
+      env,
+    });
+    if (result.error) {
+      console.error(`aip: failed to launch Codex: ${result.error.message}`);
+    }
+    return result.status ?? 1;
+  }
+}
+
 export class RootSudoRunner implements Runner {
   constructor(
     private readonly claudeBin: string,
